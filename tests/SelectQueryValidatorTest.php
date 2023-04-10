@@ -57,6 +57,12 @@ final class SelectQueryValidatorTest extends HackTest {
         foreach ($supported_test_cases as $sql) {
             expect(() ==> $conn->query($sql))->notToThrow(SQLFakeVitessQueryViolation::class);
         }
+
+        $scatter = 'select * from vt_table1 where name = \'derp\'';
+        expect(() ==> $conn->query($scatter))->toThrow(
+            SQLFakeVitessQueryViolation::class,
+            'Vitess query validation error: unsupported: don\'t scatter my keyspace'
+        );
     }
 
     public async function testUnionsNotAllowed(): Awaitable<void> {

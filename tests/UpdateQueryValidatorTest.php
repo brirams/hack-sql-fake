@@ -51,4 +51,20 @@ final class UpdateQueryValidatorTest extends HackTest {
         }
 
     }
+
+    public async function testUnboundedUpdates(): Awaitable<void> {
+        $conn = static::$conn as nonnull;
+
+        $unboundedQuery = 'update vt_table1 set name=\'derp\' where id=1';
+        expect(() ==> $conn->query($unboundedQuery))->toThrow(
+            SQLFakeVitessQueryViolation::class,
+            'Vitess query validation error: unsupported: updates need a limit',
+        );
+
+        $tooUnboundedQUery = 'update vt_table1 set name=\'derp\' where id = 2 LIMIT 501';
+        expect(() ==> $conn->query($tooUnboundedQUery))->toThrow(
+            SQLFakeVitessQueryViolation::class,
+            'Vitess query validation error: unsupported: updates cannot update more than 500 rows',
+        );
+    }
 }

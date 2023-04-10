@@ -15,6 +15,9 @@ enum UnsupportedCases: string as string {
 	ORDER_BY_COLUMNS = 'unsupported: in scatter query: order by column must reference column in SELECT list';
 	UNIONS = 'unsupported: UNION cannot be executed as a single route';
 	PRIMARY_VINDEX_COLUMN = 'unsupported: update changes primary vindex column';
+	SCATTER_QUERIES = 'unsupported: don\'t scatter my keyspace';
+	LIMIT_YOUR_UPDATES = 'unsupported: updates need a limit';
+	LIMIT_YOUR_UPDATE_LIMITS = 'unsupported: updates cannot update more than 500 rows';
 }
 
 abstract class VitessQueryValidator {
@@ -41,6 +44,9 @@ abstract class VitessQueryValidator {
 		} else if ($query is UpdateQuery) {
 			/*HHAST_FIXME[DontUseAsioJoin]*/
 			\HH\Asio\join((new UpdateQueryValidator($query, $conn))->processHandlers());
+		} else if ($query is DeleteQuery) {
+			/*HHAST_FIXME[DontUseAsioJoin]*/
+			\HH\Asio\join((new DeleteQueryValidator($query, $conn))->processHandlers());
 		}
 	}
 
@@ -54,6 +60,34 @@ abstract class VitessQueryValidator {
 			}
 		}
 		return $exprNames;
+	}
+
+	// TODO: Shared by the DeleteQueryValidator and UpdateQueryValidator. Could make verbage better
+	protected function limitYourUpdates(?limit_clause $maybeLimitClause): void {
+		if ($maybeLimitClause is null) {
+			throw new SQLFakeVitessQueryViolation(
+				Str\format('Vitess query validation error: %s', UnsupportedCases::LIMIT_YOUR_UPDATES),
+			);
+		}
+
+		$limitClause = $maybeLimitClause as nonnull;
+		// TODO: make this configurable
+		if ($limitClause['rowcount'] > 500) {
+			throw new SQLFakeVitessQueryViolation(
+				Str\format('Vitess query validation error: %s', UnsupportedCases::LIMIT_YOUR_UPDATE_LIMITS),
+			);
+		}
+	}
+}
+
+final class DeleteQueryValidator extends VitessQueryValidator {
+	public function __construct(public DeleteQuery $query, public AsyncMysqlConnection $conn) {}
+
+	<<__Override>>
+	public function getHandlers(): dict<string, (function(): Awaitable<void>)> {
+		return dict[
+			UnsupportedCases::LIMIT_YOUR_UPDATES => async () ==> $this->limitYourUpdates($this->query->limitClause)
+		];
 	}
 }
 
@@ -73,7 +107,10 @@ final class UpdateQueryValidator extends VitessQueryValidator {
 
 	<<__Override>>
 	public function getHandlers(): dict<string, (function(): Awaitable<void>)> {
-		$handlers = dict[];
+		$handlers = dict[
+			UnsupportedCases::LIMIT_YOUR_UPDATES => async () ==> $this->limitYourUpdates($this->query->limitClause)
+		];
+
 		if (static::$isPrimaryVindexColumnValidatorEnabled) {
 			$handlers[UnsupportedCases::PRIMARY_VINDEX_COLUMN] = async () ==>
 				await $this->updateChangesPrimaryVindexColumn();
@@ -114,7 +151,17 @@ final class SelectQueryValidator extends VitessQueryValidator {
 		return dict[
 			UnsupportedCases::GROUP_BY_COLUMNS => async () ==> await $this->scatterMustContainSelectColumns(),
 			UnsupportedCases::UNIONS => async () ==> await $this->unionsNotAllowed(),
+			UnsupportedCases::SCATTER_QUERIES => async () ==> $this->queriesMustNotBeScatters(),
 		];
+	}
+
+
+	private function queriesMustNotBeScatters(): void {
+		if ($this->isCrossShardQuery()) {
+			throw new SQLFakeVitessQueryViolation(
+				Str\format('Vitess query validation error: %s', UnsupportedCases::SCATTER_QUERIES),
+			);
+		}
 	}
 
 	// inspects the where clause of a Query and returns whether it is a cross-sharded query

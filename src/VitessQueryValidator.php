@@ -155,7 +155,6 @@ final class SelectQueryValidator extends VitessQueryValidator {
 		];
 	}
 
-
 	private function queriesMustNotBeScatters(): void {
 		if ($this->isCrossShardQuery()) {
 			throw new SQLFakeVitessQueryViolation(

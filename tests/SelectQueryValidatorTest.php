@@ -25,6 +25,21 @@ final class SelectQueryValidatorTest extends HackTest {
         QueryContext::$strictSQLMode = false;
     }
 
+    // TODO: IN clauses aren't properly handled as currently written. This test should pass.
+    public async function testInClausesThatShouldPass(): Awaitable<void> {
+        $conn = static::$conn as nonnull;
+        $queriesThatShouldPass = vec[
+            'select id from vt_table1 where id in (123)',
+            'select id from vt_table1 where id in (123) AND name = \'something\'',
+        ];
+
+        foreach ($queriesThatShouldPass as $sql) {
+            // This is temporary so just do it for now
+            /*HHAST_FIXME[DontAwaitInALoop]*/
+            await $conn->query($sql);
+        }
+    }
+
     public async function testScatterByColumns(): Awaitable<void> {
         $conn = static::$conn as nonnull;
 

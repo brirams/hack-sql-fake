@@ -2,7 +2,7 @@
 
 namespace Slack\SQLFake;
 
-abstract final class QueryContext {
+final class QueryContext {
 
   /**
    * In strict mode, any query referencing a table not in the shcema

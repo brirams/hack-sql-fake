@@ -8,7 +8,7 @@ use namespace HH\Lib\Str;
  * The query running interface
  * This parses a SQL statement using the Parser, then takes the parsed Query representation and executes it
  */
-abstract final class SQLCommandProcessor {
+final class SQLCommandProcessor {
 
   public static function execute(string $sql, AsyncMysqlConnection $conn): (dataset, int) {
 
@@ -28,6 +28,12 @@ abstract final class SQLCommandProcessor {
     $query = SQLParser::parse($sql);
 
     $is_vitess_query = $conn->getServer()->config['is_vitess'] ?? false;
+    // TODO: We need to have a more granular way  to tell `hack-mysql-fake` what rules need to be applied to a query since we're
+    // using Vitess across the board but with different runtime characteristics:
+    //  - "vitess" should have all rules applied but we need to have a way to opt checks in on a per query level
+    //  - "vifL" and "auxN" should have all the checks enabled that don't involve a vschema because vifl doesn't have a vschema
+    // QueryContext seems to be the place to put this, as we can set per table rules but is that granular enough to allow for cases
+    // where a callsite is querying multiple tables but I want to override certain rules for a test run?
     if ($is_vitess_query && !QueryContext::$skipVitessValidation) {
       VitessQueryValidator::validate($query, $conn);
     }
